@@ -2,11 +2,31 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-static ngx_command_t ngx_req_count_commands[] = {
+typedef struct {
+    ngx_atomic_uint_t count;
+    ngx_atomic_uint_t prev_count;
+    ngx_int_t freq_ms;
+    ngx_str_t zone_name;
+} ngx_http_req_count_shm_ctx;
+
+typedef struct {
+    ngx_array_t count_zones;
+} ngx_http_req_count_conf_t;
+
+static char *ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static ngx_int_t ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data);
+
+static ngx_command_t ngx_http_req_count_commands[] = {
+    { ngx_string("count_zone"),
+      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
+      ngx_http_req_count_zone,
+      0,
+      0,
+      NULL },
     ngx_null_command
 };
 
-static ngx_http_module_t ngx_req_count_module_ctx = {
+static ngx_http_module_t ngx_http_req_count_module_ctx = {
     NULL,
     NULL,
     NULL,
@@ -17,10 +37,10 @@ static ngx_http_module_t ngx_req_count_module_ctx = {
     NULL
 };
 
-ngx_module_t ngx_req_count_module = {
+ngx_module_t ngx_http_req_count_module = {
     NGX_MODULE_V1,
-    &ngx_req_count_module_ctx,
-    ngx_req_count_commands,
+    &ngx_http_req_count_module_ctx,
+    ngx_http_req_count_commands,
     NGX_HTTP_MODULE,
     NULL,
     NULL,
@@ -31,3 +51,149 @@ ngx_module_t ngx_req_count_module = {
     NULL,
     NGX_MODULE_V1_PADDING
 };
+
+static char *
+ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_str_t                         *value;
+    ngx_str_t                          name = ngx_null_string;
+    ngx_str_t                          freq = ngx_null_string;
+
+    ngx_shm_zone_t                    *shm_zone;
+    ngx_http_req_count_shm_ctx        *ctx;
+
+    ssize_t                            rate = 0;
+    ngx_int_t                          freq_ms = 0;
+
+    value = cf->args->elts;
+
+    // Parse arguments: name=abc freq=5/s
+    for (ngx_uint_t i = 1; i < cf->args->nelts; i++) {
+
+        if (ngx_strncmp(value[i].data, "name=", 5) == 0) {
+            name.len = value[i].len - 5;
+            name.data = value[i].data + 5;
+            continue;
+        }
+
+        if (ngx_strncmp(value[i].data, "freq=", 5) == 0) {
+            freq.len = value[i].len - 5;
+            freq.data = value[i].data + 5;
+            continue;
+        }
+
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid parameter \"%V\"", &value[i]);
+        return NGX_CONF_ERROR;
+    }
+
+    if (name.len == 0) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "count_zone: \"name\" is required");
+        return NGX_CONF_ERROR;
+    }
+
+    if (freq.len == 0) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "count_zone: \"freq\" is required");
+        return NGX_CONF_ERROR;
+    }
+
+    // ---- Parse freq like "5/s", "10/m"
+    u_char *p = freq.data;
+    u_char *last = freq.data + freq.len;
+
+    u_char *slash = ngx_strlchr(p, last, '/');
+    if (slash == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid freq format \"%V\"", &freq);
+        return NGX_CONF_ERROR;
+    }
+
+    rate = ngx_atoi(p, slash - p);
+    if (rate <= 0) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid rate in \"%V\"", &freq);
+        return NGX_CONF_ERROR;
+    }
+
+    ngx_str_t unit;
+    unit.data = slash + 1;
+    unit.len = last - (slash + 1);
+
+    if (unit.len == 1 && unit.data[0] == 's') {
+        freq_ms = 1000 / rate;
+    } else if (unit.len == 1 && unit.data[0] == 'm') {
+        freq_ms = 60000 / rate;
+    } else if (unit.len == 1 && unit.data[0] == 'h') {
+        freq_ms = 3600000 / rate;
+    } else {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid time unit in \"%V\"", &freq);
+        return NGX_CONF_ERROR;
+    }
+
+    // ---- Create context
+    ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_req_count_shm_ctx));
+    if (ctx == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ctx->freq_ms = freq_ms;
+    ctx->zone_name = name;
+
+    // ---- Create shared memory zone
+    shm_zone = ngx_shared_memory_add(cf, &name, ngx_pagesize, cmd->post);
+    if (shm_zone == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (shm_zone->data) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "duplicate count_zone \"%V\"", &name);
+        return NGX_CONF_ERROR;
+    }
+
+    shm_zone->init = ngx_http_req_count_init_zone;
+    shm_zone->data = ctx;
+
+    return NGX_CONF_OK;
+}
+
+static ngx_int_t
+ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data)
+{
+    ngx_http_req_count_shm_ctx *octx = data;
+    ngx_http_req_count_shm_ctx *ctx;
+    ngx_http_req_count_shm_ctx *conf_ctx;
+
+    // 🔴 actual shared memory
+    ctx = (ngx_http_req_count_shm_ctx *) shm_zone->shm.addr;
+
+    if (octx) {
+        // reload case
+        ctx->count = 0;
+        ctx->prev_count = 0;
+
+        // keep config values in sync
+        ctx->freq_ms = octx->freq_ms;
+        ctx->zone_name = octx->zone_name;
+
+        shm_zone->data = ctx;
+        return NGX_OK;
+    }
+
+    // first-time init
+    conf_ctx = shm_zone->data;
+
+    ctx->count = 0;
+    ctx->prev_count = 0;
+
+    ctx->freq_ms = conf_ctx->freq_ms;
+    ctx->zone_name = conf_ctx->zone_name;
+
+    // 🔁 now make shm ctx the active one
+    shm_zone->data = ctx;
+
+    return NGX_OK;
+}
