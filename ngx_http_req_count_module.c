@@ -3,41 +3,44 @@
 #include <ngx_http.h>
 
 typedef struct {
-    ngx_atomic_uint_t count;
-    ngx_atomic_uint_t prev_count;
-    ngx_int_t freq_ms;
-    ngx_str_t zone_name;
+    ngx_atomic_uint_t  count;
+    ngx_atomic_uint_t  prev_count;
+    ngx_int_t          freq_ms;
+    ngx_str_t          zone_name;
 } ngx_http_req_count_shm_ctx;
 
 typedef struct {
-    ngx_array_t *count_zones;
-    ngx_shm_zone_t  *get_zone;
+    ngx_array_t    *count_zones;
+    ngx_shm_zone_t *get_zone;
 } ngx_http_req_count_conf_t;
 
 typedef struct {
-    ngx_array_t *zones;
+    ngx_array_t  *zones;
 } ngx_http_req_count_main_conf_t;
 
 typedef struct {
-    ngx_event_t event;
+    ngx_event_t                 event;
     ngx_http_req_count_shm_ctx *ctx;
-    ngx_msec_t freq_ms;
+    ngx_msec_t                  freq_ms;
 } ngx_http_req_count_timer_ctx_t;
 
-static void *ngx_http_req_count_create_main_conf(ngx_conf_t *cf);
-static void ngx_http_req_count_timer_handler(ngx_event_t *ev);
-static ngx_int_t ngx_http_req_count_init_process(ngx_cycle_t *cycle);
-static char *ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static ngx_int_t ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data);
-static char *ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *ngx_http_req_count_get(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static ngx_int_t ngx_http_req_count_get_handler(ngx_http_request_t *r);
-static void *ngx_http_req_count_create_conf(ngx_conf_t *cf);
-static char *ngx_http_req_count_merge_conf(ngx_conf_t *cf, void *parent, void *child);
-static ngx_int_t ngx_http_req_count_handler(ngx_http_request_t *r);
-static ngx_int_t ngx_http_req_count_init(ngx_conf_t *cf);
+
+static void       *ngx_http_req_count_create_main_conf(ngx_conf_t *cf);
+static void        ngx_http_req_count_timer_handler(ngx_event_t *ev);
+static ngx_int_t   ngx_http_req_count_init_process(ngx_cycle_t *cycle);
+static char       *ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static ngx_int_t   ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data);
+static char       *ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char       *ngx_http_req_count_get(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static ngx_int_t   ngx_http_req_count_get_handler(ngx_http_request_t *r);
+static void       *ngx_http_req_count_create_conf(ngx_conf_t *cf);
+static char       *ngx_http_req_count_merge_conf(ngx_conf_t *cf, void *parent, void *child);
+static ngx_int_t   ngx_http_req_count_handler(ngx_http_request_t *r);
+static ngx_int_t   ngx_http_req_count_init(ngx_conf_t *cf);
+
 
 static ngx_command_t ngx_http_req_count_commands[] = {
+
     { ngx_string("count_zone"),
       NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
       ngx_http_req_count_zone,
@@ -45,61 +48,66 @@ static ngx_command_t ngx_http_req_count_commands[] = {
       0,
       NULL },
 
-      { ngx_string("count_req"),
+    { ngx_string("count_req"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_req_count,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
 
-      { ngx_string("count_get"),
-      NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+    { ngx_string("count_get"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_req_count_get,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
-      
+
     ngx_null_command
 };
 
+
 static ngx_http_module_t ngx_http_req_count_module_ctx = {
-    NULL,
-    ngx_http_req_count_init,
-    ngx_http_req_count_create_main_conf,
-    NULL,
-    NULL,
-    NULL,
-    ngx_http_req_count_create_conf,
-    ngx_http_req_count_merge_conf
+    NULL,                                  /* preconfiguration */
+    ngx_http_req_count_init,               /* postconfiguration */
+
+    ngx_http_req_count_create_main_conf,   /* create main configuration */
+    NULL,                                  /* init main configuration */
+
+    NULL,                                  /* create server configuration */
+    NULL,                                  /* merge server configuration */
+
+    ngx_http_req_count_create_conf,        /* create location configuration */
+    ngx_http_req_count_merge_conf          /* merge location configuration */
 };
+
 
 ngx_module_t ngx_http_req_count_module = {
     NGX_MODULE_V1,
-    &ngx_http_req_count_module_ctx,
-    ngx_http_req_count_commands,
-    NGX_HTTP_MODULE,
-    NULL,
-    NULL,
-    ngx_http_req_count_init_process,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
+    &ngx_http_req_count_module_ctx,   /* module context */
+    ngx_http_req_count_commands,      /* module directives */
+    NGX_HTTP_MODULE,                  /* module type */
+    NULL,                             /* init master */
+    NULL,                             /* init module */
+    ngx_http_req_count_init_process,  /* init process */
+    NULL,                             /* init thread */
+    NULL,                             /* exit thread */
+    NULL,                             /* exit process */
+    NULL,                             /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
 
 static void *
 ngx_http_req_count_create_main_conf(ngx_conf_t *cf)
 {
-    ngx_http_req_count_main_conf_t *conf;
+    ngx_http_req_count_main_conf_t  *conf;
 
     conf = ngx_pcalloc(cf->pool, sizeof(*conf));
     if (conf == NULL) {
         return NULL;
     }
 
-    conf->zones = ngx_array_create(cf->pool, 4,
-                                   sizeof(ngx_shm_zone_t *));
+    conf->zones = ngx_array_create(cf->pool, 4, sizeof(ngx_shm_zone_t *));
     if (conf->zones == NULL) {
         return NULL;
     }
@@ -107,17 +115,18 @@ ngx_http_req_count_create_main_conf(ngx_conf_t *cf)
     return conf;
 }
 
+
 static void
 ngx_http_req_count_timer_handler(ngx_event_t *ev)
 {
-    ngx_http_req_count_timer_ctx_t *tctx;
-    ngx_http_req_count_shm_ctx     *ctx;
-    ngx_atomic_uint_t               old;
+    ngx_http_req_count_timer_ctx_t  *tctx;
+    ngx_http_req_count_shm_ctx      *ctx;
+    ngx_atomic_uint_t                old;
 
     tctx = ev->data;
     ctx = tctx->ctx;
 
-    /* copy count → prev_count and reset */
+    /* copy count -> prev_count and reset */
     old = ctx->count;
     ctx->prev_count = old;
 
@@ -127,36 +136,36 @@ ngx_http_req_count_timer_handler(ngx_event_t *ev)
     ngx_add_timer(ev, tctx->freq_ms);
 }
 
+
 static ngx_int_t
 ngx_http_req_count_init_process(ngx_cycle_t *cycle)
 {
-    ngx_uint_t i;
+    ngx_uint_t                       i;
+    ngx_http_req_count_main_conf_t  *mcf;
+    ngx_http_req_count_shm_ctx      *ctx;
+    ngx_http_req_count_timer_ctx_t  *tctx;
+    ngx_shm_zone_t                 **zones;
 
     /* only worker 0 schedules timers */
     if (ngx_process_slot != 0) {
         return NGX_OK;
     }
 
-    ngx_http_req_count_main_conf_t *mcf;
-
-    mcf = ngx_http_cycle_get_module_main_conf(cycle,
-                                              ngx_http_req_count_module);
+    mcf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_req_count_module);
 
     if (mcf == NULL || mcf->zones == NULL) {
         return NGX_OK;
     }
 
-    ngx_shm_zone_t **zones = mcf->zones->elts;
+    zones = mcf->zones->elts;
 
     for (i = 0; i < mcf->zones->nelts; i++) {
 
-        ngx_http_req_count_shm_ctx *ctx = zones[i]->data;
+        ctx = zones[i]->data;
 
         if (ctx == NULL) {
             continue;
         }
-
-        ngx_http_req_count_timer_ctx_t *tctx;
 
         tctx = ngx_pcalloc(cycle->pool, sizeof(*tctx));
         if (tctx == NULL) {
@@ -176,22 +185,24 @@ ngx_http_req_count_init_process(ngx_cycle_t *cycle)
     return NGX_OK;
 }
 
+
 static char *
 ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_str_t                         *value;
-    ngx_str_t                          name = ngx_null_string;
-    ngx_str_t                          freq = ngx_null_string;
-
-    ngx_shm_zone_t                    *shm_zone;
-    ngx_http_req_count_shm_ctx        *ctx;
-
-    ngx_int_t                          freq_ms = 0;
+    ngx_str_t                        *value;
+    ngx_str_t                         name = ngx_null_string;
+    ngx_str_t                         freq = ngx_null_string;
+    ngx_shm_zone_t                   *shm_zone;
+    ngx_http_req_count_shm_ctx       *ctx;
+    ngx_http_req_count_main_conf_t   *mcf;
+    ngx_shm_zone_t                  **slot;
+    ngx_int_t                         freq_ms = 0;
+    ngx_uint_t                        i;
 
     value = cf->args->elts;
 
-    // Parse arguments: name=abc freq=5/s
-    for (ngx_uint_t i = 1; i < cf->args->nelts; i++) {
+    /* Parse arguments: name=abc freq=5s */
+    for (i = 1; i < cf->args->nelts; i++) {
 
         if (ngx_strncmp(value[i].data, "name=", 5) == 0) {
             name.len = value[i].len - 5;
@@ -222,16 +233,15 @@ ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    // ---- Parse freq like "5/s", "10/m"
-    freq_ms = ngx_parse_time(&freq, 0);  // milliseconds
+    /* Parse freq like "5s", "1m" */
+    freq_ms = ngx_parse_time(&freq, 0);  /* milliseconds */
 
     if (freq_ms == NGX_ERROR || freq_ms <= 0) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                        "invalid freq \"%V\"", &freq);
+                           "invalid freq \"%V\"", &freq);
         return NGX_CONF_ERROR;
     }
 
-    // ---- Create context
     ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_req_count_shm_ctx));
     if (ctx == NULL) {
         return NGX_CONF_ERROR;
@@ -240,9 +250,8 @@ ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ctx->freq_ms = freq_ms;
     ctx->zone_name = name;
 
-    // ---- Create shared memory zone
     shm_zone = ngx_shared_memory_add(cf, &name, ngx_pagesize,
-                                 &ngx_http_req_count_module);
+                                     &ngx_http_req_count_module);
     if (shm_zone == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -256,12 +265,7 @@ ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     shm_zone->init = ngx_http_req_count_init_zone;
     shm_zone->data = ctx;
 
-    ngx_http_req_count_main_conf_t *mcf;
-
-    mcf = ngx_http_conf_get_module_main_conf(cf,
-                                            ngx_http_req_count_module);
-
-    ngx_shm_zone_t **slot;
+    mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_req_count_module);
 
     slot = ngx_array_push(mcf->zones);
     if (slot == NULL) {
@@ -273,22 +277,22 @@ ngx_http_req_count_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;
 }
 
+
 static ngx_int_t
 ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 {
-    ngx_http_req_count_shm_ctx *octx = data;
-    ngx_http_req_count_shm_ctx *ctx;
-    ngx_http_req_count_shm_ctx *conf_ctx;
+    ngx_http_req_count_shm_ctx  *octx = data;
+    ngx_http_req_count_shm_ctx  *ctx;
+    ngx_http_req_count_shm_ctx  *conf_ctx;
 
-    // 🔴 actual shared memory
+    /* actual shared memory */
     ctx = (ngx_http_req_count_shm_ctx *) shm_zone->shm.addr;
 
     if (octx) {
-        // reload case
+        /* reload case */
         ctx->count = 0;
         ctx->prev_count = 0;
 
-        // keep config values in sync
         ctx->freq_ms = octx->freq_ms;
         ctx->zone_name = octx->zone_name;
 
@@ -296,7 +300,7 @@ ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data)
         return NGX_OK;
     }
 
-    // first-time init
+    /* first-time init */
     conf_ctx = shm_zone->data;
 
     ctx->count = 0;
@@ -305,26 +309,27 @@ ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *data)
     ctx->freq_ms = conf_ctx->freq_ms;
     ctx->zone_name = conf_ctx->zone_name;
 
-    // 🔁 now make shm ctx the active one
+    /* make shm ctx the active one */
     shm_zone->data = ctx;
 
     return NGX_OK;
 }
 
+
 static char *
 ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_http_req_count_conf_t   *rcf = conf;
-
-    ngx_str_t                   *value;
-    ngx_str_t                    name = ngx_null_string;
-
-    ngx_shm_zone_t              *shm_zone;
+    ngx_http_req_count_conf_t  *rcf = conf;
+    ngx_str_t                  *value;
+    ngx_str_t                   name = ngx_null_string;
+    ngx_shm_zone_t             *shm_zone;
+    ngx_shm_zone_t            **zone;
+    ngx_uint_t                  i;
 
     value = cf->args->elts;
 
-    // Parse: count_req name=abc;
-    for (ngx_uint_t i = 1; i < cf->args->nelts; i++) {
+    /* Parse: count_req name=abc; */
+    for (i = 1; i < cf->args->nelts; i++) {
 
         if (ngx_strncmp(value[i].data, "name=", 5) == 0) {
             name.len = value[i].len - 5;
@@ -343,7 +348,7 @@ ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    // Lookup existing shared memory zone
+    /* Lookup existing shared memory zone */
     shm_zone = ngx_shared_memory_add(cf, &name, 0, &ngx_http_req_count_module);
     if (shm_zone == NULL) {
         return NGX_CONF_ERROR;
@@ -355,7 +360,6 @@ ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    // Initialize array if needed
     if (rcf->count_zones == NULL) {
         rcf->count_zones = ngx_array_create(cf->pool, 1,
                                             sizeof(ngx_shm_zone_t *));
@@ -363,9 +367,6 @@ ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             return NGX_CONF_ERROR;
         }
     }
-
-    // Push zone into array
-    ngx_shm_zone_t **zone;
 
     zone = ngx_array_push(rcf->count_zones);
     if (zone == NULL) {
@@ -377,16 +378,18 @@ ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;
 }
 
+
 static char *
 ngx_http_req_count_get(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_http_req_count_conf_t *rcf = conf;
+    ngx_http_req_count_conf_t  *rcf = conf;
+    ngx_str_t                  *value;
+    ngx_str_t                   name = ngx_null_string;
+    ngx_shm_zone_t             *shm_zone;
+    ngx_http_core_loc_conf_t   *clcf;
+    ngx_uint_t                  i;
 
-    ngx_str_t      *value;
-    ngx_str_t       name = ngx_null_string;
-    ngx_shm_zone_t *shm_zone;
-
-    // ❗ Reject duplicate usage in same block
+    /* Reject duplicate usage in same block */
     if (rcf->get_zone != NULL) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "duplicate \"count_get\" directive");
@@ -395,8 +398,8 @@ ngx_http_req_count_get(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     value = cf->args->elts;
 
-    // Parse: count_get name=abc;
-    for (ngx_uint_t i = 1; i < cf->args->nelts; i++) {
+    /* Parse: count_get name=abc; */
+    for (i = 1; i < cf->args->nelts; i++) {
 
         if (ngx_strncmp(value[i].data, "name=", 5) == 0) {
             name.len = value[i].len - 5;
@@ -415,9 +418,8 @@ ngx_http_req_count_get(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    // Lookup existing shared memory zone
-    shm_zone = ngx_shared_memory_add(cf, &name, 0,
-                                     &ngx_http_req_count_module);
+    /* Lookup existing shared memory zone */
+    shm_zone = ngx_shared_memory_add(cf, &name, 0, &ngx_http_req_count_module);
     if (shm_zone == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -428,29 +430,25 @@ ngx_http_req_count_get(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    // Store zone in loc_conf
     rcf->get_zone = shm_zone;
 
-    // Register content handler
-    ngx_http_core_loc_conf_t *clcf;
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-
     clcf->handler = ngx_http_req_count_get_handler;
 
     return NGX_CONF_OK;
 }
 
+
 static ngx_int_t
 ngx_http_req_count_get_handler(ngx_http_request_t *r)
 {
-    ngx_http_req_count_conf_t  *rcf;
-    ngx_http_req_count_shm_ctx *ctx;
-
-    ngx_buf_t    *b;
-    ngx_chain_t   out;
-
-    u_char       *p;
-    u_char        buffer[NGX_INT64_LEN];
+    ngx_http_req_count_conf_t   *rcf;
+    ngx_http_req_count_shm_ctx  *ctx;
+    ngx_buf_t                   *b;
+    ngx_chain_t                  out;
+    u_char                      *p;
+    u_char                       buffer[NGX_INT64_LEN];
+    ngx_str_t                    response;
 
     rcf = ngx_http_get_module_loc_conf(r, ngx_http_req_count_module);
 
@@ -464,14 +462,12 @@ ngx_http_req_count_get_handler(ngx_http_request_t *r)
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    // Convert count to string
+    /* Convert count to string */
     p = ngx_sprintf(buffer, "%uA\n", ctx->prev_count);
 
-    ngx_str_t response;
     response.data = buffer;
     response.len = p - buffer;
 
-    // Set headers
     r->headers_out.status = NGX_HTTP_OK;
     r->headers_out.content_length_n = response.len;
     ngx_str_set(&r->headers_out.content_type, "text/plain");
@@ -480,7 +476,6 @@ ngx_http_req_count_get_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    // Allocate buffer
     b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
     if (b == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -496,6 +491,7 @@ ngx_http_req_count_get_handler(ngx_http_request_t *r)
 
     return ngx_http_output_filter(r, &out);
 }
+
 
 static void *
 ngx_http_req_count_create_conf(ngx_conf_t *cf)
@@ -513,18 +509,19 @@ ngx_http_req_count_create_conf(ngx_conf_t *cf)
     return conf;
 }
 
+
 static char *
 ngx_http_req_count_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 {
-    ngx_http_req_count_conf_t *prev = parent;
-    ngx_http_req_count_conf_t *conf = child;
+    ngx_http_req_count_conf_t  *prev = parent;
+    ngx_http_req_count_conf_t  *conf = child;
 
-    // Inherit count_req zones
+    /* Inherit count_req zones */
     if (conf->count_zones == NULL) {
         conf->count_zones = prev->count_zones;
     }
 
-    // Inherit count_get zone
+    /* Inherit count_get zone */
     if (conf->get_zone == NULL) {
         conf->get_zone = prev->get_zone;
     }
@@ -532,10 +529,12 @@ ngx_http_req_count_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     return NGX_CONF_OK;
 }
 
+
 static ngx_int_t
 ngx_http_req_count_handler(ngx_http_request_t *r)
 {
     ngx_http_req_count_conf_t   *rcf;
+    ngx_http_req_count_shm_ctx  *ctx;
     ngx_shm_zone_t             **zones;
     ngx_uint_t                   i;
 
@@ -549,20 +548,19 @@ ngx_http_req_count_handler(ngx_http_request_t *r)
 
     for (i = 0; i < rcf->count_zones->nelts; i++) {
 
-        ngx_http_req_count_shm_ctx *ctx;
-
         ctx = zones[i]->data;
 
         if (ctx == NULL) {
             continue;
         }
 
-        // 🔥 Atomic increment (shared across workers)
+        /* Atomic increment (shared across workers) */
         ngx_atomic_fetch_add(&ctx->count, 1);
     }
 
     return NGX_DECLINED;
 }
+
 
 static ngx_int_t
 ngx_http_req_count_init(ngx_conf_t *cf)
