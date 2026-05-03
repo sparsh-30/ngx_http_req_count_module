@@ -18,6 +18,8 @@ static ngx_int_t ngx_http_req_count_init_zone(ngx_shm_zone_t *shm_zone, void *da
 static char *ngx_http_req_count(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static void *ngx_http_req_count_create_conf(ngx_conf_t *cf);
 static char *ngx_http_req_count_merge_conf(ngx_conf_t *cf, void *parent, void *child);
+static ngx_int_t ngx_http_req_count_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_req_count_init(ngx_conf_t *cf);
 
 static ngx_command_t ngx_http_req_count_commands[] = {
     { ngx_string("count_zone"),
@@ -38,7 +40,7 @@ static ngx_command_t ngx_http_req_count_commands[] = {
 
 static ngx_http_module_t ngx_http_req_count_module_ctx = {
     NULL,
-    NULL,
+    ngx_http_req_count_init,
     NULL,
     NULL,
     NULL,
@@ -303,4 +305,54 @@ ngx_http_req_count_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     }
 
     return NGX_CONF_OK;
+}
+
+static ngx_int_t
+ngx_http_req_count_handler(ngx_http_request_t *r)
+{
+    ngx_http_req_count_conf_t   *rcf;
+    ngx_shm_zone_t             **zones;
+    ngx_uint_t                   i;
+
+    rcf = ngx_http_get_module_loc_conf(r, ngx_http_req_count_module);
+
+    if (rcf->count_zones == NULL) {
+        return NGX_DECLINED;
+    }
+
+    zones = rcf->count_zones->elts;
+
+    for (i = 0; i < rcf->count_zones->nelts; i++) {
+
+        ngx_http_req_count_shm_ctx *ctx;
+
+        ctx = zones[i]->data;
+
+        if (ctx == NULL) {
+            continue;
+        }
+
+        // 🔥 Atomic increment (shared across workers)
+        ngx_atomic_fetch_add(&ctx->count, 1);
+    }
+
+    return NGX_DECLINED;
+}
+
+static ngx_int_t
+ngx_http_req_count_init(ngx_conf_t *cf)
+{
+    ngx_http_handler_pt        *h;
+    ngx_http_core_main_conf_t  *cmcf;
+
+    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+
+    *h = ngx_http_req_count_handler;
+
+    return NGX_OK;
 }
