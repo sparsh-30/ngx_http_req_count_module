@@ -27,11 +27,10 @@ This module provides a simpler alternative by maintaining request counters direc
 
 ---
 
-# Requirements
+# Build and Installation
 
-The module can be built on most Linux distributions where NGINX can be compiled from source.
-
-## Ubuntu / Debian
+## 1. Install Packages
+### Ubuntu / Debian
 
 Install the required packages:
 
@@ -47,7 +46,7 @@ sudo apt install -y \
 
 ---
 
-## RHEL / CentOS / Rocky Linux / AlmaLinux
+### RHEL / CentOS / Rocky Linux / AlmaLinux
 
 Install the required packages:
 
@@ -75,9 +74,7 @@ sudo yum install -y \
 
 ---
 
-# Build and Installation
-
-## 1. Download NGINX Source
+## 2. Download NGINX Source
 
 Download the same version of NGINX that is installed on your system.
 
@@ -93,7 +90,7 @@ cd nginx-1.26.0
 
 ---
 
-## 2. Clone the Module Repository
+## 3. Clone the Module Repository
 
 Clone the repository to any directory of your choice.
 
@@ -113,7 +110,7 @@ Replace `<YOUR_MODULE_REPO_URL>` with your repository URL.
 
 ---
 
-## 3. Configure NGINX With the Module
+## 4. Configure NGINX With the Module
 
 Run the NGINX configure script and provide the module path using `--add-module`.
 
@@ -148,7 +145,7 @@ sudo ./configure \
 
 ---
 
-## 4. Build NGINX
+## 5. Build NGINX
 
 ```bash
 make
@@ -156,7 +153,7 @@ make
 
 ---
 
-## 5. Install
+## 6. Install
 
 ```bash
 sudo make install
@@ -164,7 +161,7 @@ sudo make install
 
 ---
 
-## 6. Verify Installation
+## 7. Verify Installation
 
 Run:
 
